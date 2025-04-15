@@ -12,26 +12,28 @@
       height: 100%;
       overflow: hidden;
     }
-
+    
     .wrapper {
       position: relative;
       width: 100%;
       height: 100%;
     }
-
+    
     video {
       width: 100%;
       height: 100%;
       object-fit: cover;
       z-index: 1;
     }
-
+    
+    /* Zajistit viditelnost ovládacích prvků */
     video::-webkit-media-controls {
       display: flex !important;
       opacity: 1 !important;
       z-index: 10 !important;
     }
-
+    
+    /* Odstranit překrývající vrstvu, která brání interakci */
     .video-controls-target {
       display: none;
     }
@@ -44,12 +46,14 @@
       Your browser does not support the video tag.
     </video>
   </div>
-
+  
   <script>
+    // Inicializace video přehrávače
     const video = document.getElementById('mainVideo');
-
-    // Volitelné kliknutí pro Play/Pause
+    
+    // Umožnit kliknutí na video pro přehrání/zastavení
     video.addEventListener('click', function(e) {
+      // Pouze pokud není kliknuto na ovládací prvky
       if (e.target === video) {
         if (video.paused) {
           video.play();
@@ -58,18 +62,8 @@
         }
       }
     });
-
-    // Poslat do parentu, že uživatel klikl na Play
-    video.addEventListener('play', () => {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({
-          type: 'userInteraction',
-          action: 'play'
-        }, '*');
-      }
-    });
-
-    // Příjem příkazů z rodiče
+    
+    // Nastavit komunikaci s rodičovským oknem
     window.addEventListener('message', function(event) {
       if (event.data && event.data.type === 'parentCommand') {
         if (event.data.action === 'play') {
@@ -81,20 +75,20 @@
         }
       }
     });
-
-    // Informuj parent, že iframe je ready
+    
+    // Informovat rodiče, že iframe je připraven
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'videoFrameReady',
         frameId: window.location.pathname.split('/').pop()
       }, '*');
     }
-
-    // Posílej stav zpět do parentu
+    
+    // Propagovat události o stavu videa do rodiče
     video.addEventListener('play', reportVideoState);
     video.addEventListener('pause', reportVideoState);
     video.addEventListener('volumechange', reportVideoState);
-
+    
     function reportVideoState() {
       if (window.parent && window.parent !== window) {
         window.parent.postMessage({
