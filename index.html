@@ -26,9 +26,16 @@
       z-index: 1;
     }
     
-    /* Odstranit všechny styly, které by mohly narušovat nativní ovladače */
+    /* Zajistit viditelnost ovládacích prvků */
     video::-webkit-media-controls {
       display: flex !important;
+      opacity: 1 !important;
+      z-index: 10 !important;
+    }
+    
+    /* Odstranit překrývající vrstvu, která brání interakci */
+    .video-controls-target {
+      display: none;
     }
   </style>
 </head>
@@ -44,97 +51,55 @@
     // Inicializace video přehrávače
     const video = document.getElementById('mainVideo');
     
-    // Zamezit duplicitním událostem
-    let lastEventTime = 0;
-    const EVENT_THROTTLE = 300; // ms
-    let processingCommand = false;
-    
-    function debounceEvent(callback) {
-      const now = Date.now();
-      if (now - lastEventTime < EVENT_THROTTLE) return;
-      lastEventTime = now;
-      callback();
-    }
+    // Umožnit kliknutí na video pro přehrání/zastavení
+    video.addEventListener('click', function(e) {
+      // Pouze pokud není kliknuto na ovládací prvky
+      if (e.target === video) {
+        if (video.paused) {
+          video.play();
+        } else {
+          video.pause();
+        }
+      }
+    });
     
     // Nastavit komunikaci s rodičovským oknem
     window.addEventListener('message', function(event) {
-      if (processingCommand) return;
-      
       if (event.data && event.data.type === 'parentCommand') {
-        processingCommand = true;
-        
         if (event.data.action === 'play') {
-          if (video.paused) {
-            video.play().catch(e => console.error('Chyba přehrávání:', e));
-          }
+          video.play();
         } else if (event.data.action === 'pause') {
-          if (!video.paused) {
-            video.pause();
-          }
+          video.pause();
         } else if (event.data.action === 'toggleMute') {
           video.muted = !video.muted;
-        }
-        
-        setTimeout(() => {
-          processingCommand = false;
-          reportVideoState();
-        }, 100);
-      }
-      
-      if (event.data && event.data.type === 'userInteraction') {
-        if (event.data.action === 'tap' && !processingCommand) {
-          processingCommand = true;
-          
-          if (video.paused) {
-            video.play().catch(e => console.error('Chyba přehrávání:', e));
-          } else {
-            video.pause();
-          }
-          
-          setTimeout(() => {
-            processingCommand = false;
-            reportVideoState();
-          }, 100);
         }
       }
     });
     
     // Informovat rodiče, že iframe je připraven
-    window.addEventListener('load', function() {
-      if (window.parent && window.parent !== window) {
-        setTimeout(() => {
-          window.parent.postMessage({
-            type: 'videoFrameReady',
-            frameId: window.location.pathname.split('/').pop()
-          }, '*');
-          
-          reportVideoState();
-        }, 100);
-      }
-    });
-    
-    // Propagovat události o stavu videa do rodiče
-    let reportTimeout = null;
-    
-    function reportVideoState() {
-      clearTimeout(reportTimeout);
-      reportTimeout = setTimeout(() => {
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({
-            type: 'videoStateUpdate',
-            frameId: window.location.pathname.split('/').pop(),
-            isPaused: video.paused,
-            isMuted: video.muted,
-            volume: video.volume
-          }, '*');
-        }
-      }, 50);
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'videoFrameReady',
+        frameId: window.location.pathname.split('/').pop()
+      }, '*');
     }
     
-    // Používat nativní ovládací prvky prohlížeče a pouze reportovat změny
+    // Propagovat události o stavu videa do rodiče
     video.addEventListener('play', reportVideoState);
     video.addEventListener('pause', reportVideoState);
     video.addEventListener('volumechange', reportVideoState);
+    
+    function reportVideoState() {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'videoStateUpdate',
+          frameId: window.location.pathname.split('/').pop(),
+          isPaused: video.paused,
+          isMuted: video.muted,
+          volume: video.volume
+        }, '*');
+      }
+    }
   </script>
 </body>
 </html>
