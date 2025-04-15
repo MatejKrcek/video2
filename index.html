@@ -32,11 +32,6 @@
       opacity: 1 !important;
       z-index: 10 !important;
     }
-    
-    /* Odstranit překrývající vrstvu, která brání interakci */
-    .video-controls-target {
-      display: none;
-    }
   </style>
 </head>
 <body>
@@ -50,44 +45,67 @@
   <script>
     // Inicializace video přehrávače
     const video = document.getElementById('mainVideo');
+    let blockUserInteraction = false;
+    let lastActionTime = 0;
+    const ACTION_COOLDOWN = 300; // ms - cooldown mezi akcemi
     
-    // Umožnit kliknutí na video pro přehrání/zastavení
-    video.addEventListener('click', function(e) {
-      // Pouze pokud není kliknuto na ovládací prvky
-      if (e.target === video) {
-        if (video.paused) {
-          video.play();
-        } else {
-          video.pause();
-        }
-      }
-    });
+    // Odstranil jsem posluchač kliknutí na video, protože máme controls="true"
+    // a vlastní handler konflikuje s nativními ovladači videa
     
     // Nastavit komunikaci s rodičovským oknem
     window.addEventListener('message', function(event) {
       if (event.data && event.data.type === 'parentCommand') {
+        const now = Date.now();
+        if (now - lastActionTime < ACTION_COOLDOWN) return; // Zabránit příliš častým akcím
+        
+        lastActionTime = now;
+        
         if (event.data.action === 'play') {
-          video.play();
+          video.play().catch(e => console.error('Chyba přehrávání:', e));
         } else if (event.data.action === 'pause') {
           video.pause();
         } else if (event.data.action === 'toggleMute') {
           video.muted = !video.muted;
         }
       }
+      
+      if (event.data && event.data.type === 'userInteraction') {
+        if (event.data.action === 'tap' && !blockUserInteraction) {
+          blockUserInteraction = true;
+          setTimeout(() => { blockUserInteraction = false; }, ACTION_COOLDOWN);
+          
+          // Zabránit nechtěnému přehrání po scrollování
+          if (video.paused) {
+            video.play().catch(e => console.error('Chyba přehrávání:', e));
+          } else {
+            video.pause();
+          }
+        }
+      }
     });
     
-    // Informovat rodiče, že iframe je připraven
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({
-        type: 'videoFrameReady',
-        frameId: window.location.pathname.split('/').pop()
-      }, '*');
+    // Informovat rodiče, že iframe je připraven - poslat až po plném načtení
+    window.addEventListener('load', function() {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'videoFrameReady',
+          frameId: window.location.pathname.split('/').pop()
+        }, '*');
+      }
+      // Poslat první stav videa
+      reportVideoState();
+    });
+    
+    // Propagovat události o stavu videa do rodiče - přidal jsem debounce
+    let reportTimeout = null;
+    function debouncedReport() {
+      clearTimeout(reportTimeout);
+      reportTimeout = setTimeout(reportVideoState, 50);
     }
     
-    // Propagovat události o stavu videa do rodiče
-    video.addEventListener('play', reportVideoState);
-    video.addEventListener('pause', reportVideoState);
-    video.addEventListener('volumechange', reportVideoState);
+    video.addEventListener('play', debouncedReport);
+    video.addEventListener('pause', debouncedReport);
+    video.addEventListener('volumechange', debouncedReport);
     
     function reportVideoState() {
       if (window.parent && window.parent !== window) {
